@@ -328,29 +328,27 @@ const App: React.FC = () => {
     setLoading(true);
     setError(null);
     setProgress(0);
-
+  
     try {
-      // 1. Obter a lista de Pokémon (apenas nomes e URLs)
       const listUrl = `https://pokeapi.co/api/v2/pokemon?limit=${POKEMON_LIMIT}`;
       const listData = await fetchWithRetry(listUrl);
       const pokemonUrls = listData.results.map((result: { url: string }) => result.url);
-
-      // 2. Buscar detalhes em lotes
+  
       const pokemonArray: Pokemon[] = [];
       const errors: string[] = [];
       let fetchedCount = 0;
-
+  
       for (let i = 0; i < pokemonUrls.length; i += BATCH_SIZE) {
         const batchUrls = pokemonUrls.slice(i, i + BATCH_SIZE);
-
-        const results: PromiseSettledResult<Pokemon | Error>[] = await Promise.allSettled(
-          batchUrls.map(async (url: string) => {
-            const data = await fetchWithRetry(url);
-            return data as Pokemon;
-          })
-        );
-
-        results.forEach((result: PromiseSettledResult<Pokemon | Error>, index: number) => {
+  
+        const fetchPromises = batchUrls.map(async (url: string) => {
+          const data = await fetchWithRetry(url);
+          return data as Pokemon;
+        });
+  
+        const results = await Promise.allSettled(fetchPromises);
+  
+        results.forEach((result, index) => {
           if (result.status === "fulfilled") {
             pokemonArray.push(result.value as Pokemon);
           } else {
@@ -358,27 +356,26 @@ const App: React.FC = () => {
             errors.push(`Failed to fetch Pokémon at ${batchUrls[index]}: ${errorMsg}`);
           }
         });
-
+  
         fetchedCount += batchUrls.length;
         setProgress(Math.round((fetchedCount / POKEMON_LIMIT) * 100));
-
-        // Adicionar um pequeno delay entre lotes para evitar sobrecarga
+  
         if (i + BATCH_SIZE < pokemonUrls.length) {
           await delay(BATCH_DELAY_MS);
         }
       }
-
+  
       if (errors.length > 0) {
         console.warn("Some Pokémon failed to load:", errors);
       }
-
+  
       if (pokemonArray.length === 0) {
         throw new Error("No Pokémon data retrieved.");
       }
-
+  
       pokemonArray.sort((a, b) => a.id - b.id);
       setPokemonList(pokemonArray);
-
+  
       await processEvolutionChains(pokemonArray);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
