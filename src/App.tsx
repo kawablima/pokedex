@@ -54,10 +54,10 @@ interface EvolutionStep {
 
 // Constantes
 const POKEMON_LIMIT = 1025; // Carregando todos os 1025 Pokémon
-const BATCH_SIZE = 20; // Tamanho do lote para requisições
+const BATCH_SIZE = 50; // Tamanho do lote para requisições
 const RETRY_ATTEMPTS = 3; // Número de tentativas para cada requisição
-const RETRY_DELAY_MS = 2000; // Delay entre tentativas (1 segundo)
-const BATCH_DELAY_MS = 500; // Delay entre lotes
+const RETRY_DELAY_MS = 3000; // Delay entre tentativas (1 segundo)
+const BATCH_DELAY_MS = 100; // Delay entre lotes
 const GENERATIONS = [
   { id: 1, name: "Kanto", range: [1, 151] },
   { id: 2, name: "Johto", range: [152, 251] },
