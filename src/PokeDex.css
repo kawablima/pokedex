@@ -1,4 +1,4 @@
-/* PokeDex.css */
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
 
 :root {
   --bg: #f3f3f3;
@@ -7,7 +7,7 @@
   --muted: #666;
   --border: #111;
   --shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
-  --radius: 10px;
+  --radius: 12px;
   --gap: 18px;
 }
 
@@ -21,6 +21,13 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
+  font-family: "Press Start 2P", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
 }
 
 .pokedex-container {
@@ -29,15 +36,13 @@ body {
   padding: 22px 18px 40px;
 }
 
-/* Título */
 .pokedex-container h1 {
   margin: 8px 0 12px;
   text-align: center;
-  font-size: 44px;
+  font-size: 40px;
   letter-spacing: 1px;
 }
 
-/* Controles */
 .controls {
   display: flex;
   gap: 10px;
@@ -51,40 +56,39 @@ body {
 .controls input {
   border: 2px solid var(--border);
   background: var(--panel);
-  padding: 6px 10px;
-  font-size: 14px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  border-radius: 10px;
   outline: none;
 }
 
 .controls input {
-  min-width: 220px;
+  min-width: 240px;
 }
 
 .controls select:focus,
 .controls input:focus {
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.14);
 }
 
-/* Loading e erro */
 .loading {
   text-align: center;
   padding: 26px 0;
-  font-size: 16px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .error {
-  max-width: 720px;
+  max-width: 900px;
   margin: 0 auto 18px;
   padding: 10px 12px;
   border: 2px solid var(--border);
   background: #ffecec;
   color: #7a0000;
-  border-radius: 8px;
+  border-radius: 10px;
+  font-size: 12px;
 }
 
-/* Grupos */
 .pokemon-groups {
   display: flex;
   flex-direction: column;
@@ -92,26 +96,23 @@ body {
 }
 
 .pokemon-group h2 {
-  margin: 6px 0 14px;
-  font-size: 28px;
+  margin: 8px 0 14px;
+  font-size: 22px;
   letter-spacing: 1px;
 }
 
-/* Grid dos cards */
 .pokemon-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(160px, 1fr));
   gap: var(--gap);
 }
 
-/* Card (agora é button no App.tsx) */
 .pokemon-card {
   appearance: none;
   -webkit-appearance: none;
   border: 2px solid var(--border);
   background: var(--panel);
   border-radius: var(--radius);
-  box-shadow: none;
   padding: 14px 10px 12px;
   cursor: pointer;
   text-align: center;
@@ -124,17 +125,11 @@ body {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
 }
 
-.pokemon-card:active {
-  transform: translateY(0);
-  box-shadow: none;
-}
-
 .pokemon-card:focus {
   outline: none;
   box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.14);
 }
 
-/* Imagem no card (sprite) */
 .pokemon-card img {
   width: 96px;
   height: 96px;
@@ -144,27 +139,24 @@ body {
   image-rendering: pixelated;
 }
 
-/* Info do card */
 .pokemon-card-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .pokemon-id {
   margin: 0;
-  font-size: 12px;
+  font-size: 10px;
   color: var(--muted);
 }
 
 .pokemon-card-info h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 12px;
   text-transform: lowercase;
-  letter-spacing: 0.3px;
 }
 
-/* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -178,7 +170,7 @@ body {
 
 .modal-content {
   position: relative;
-  width: min(820px, 100%);
+  width: min(920px, 100%);
   max-height: min(86vh, 900px);
   overflow: auto;
   background: var(--panel);
@@ -188,26 +180,24 @@ body {
   padding: 18px 18px 14px;
 }
 
-/* Cabeçalho do modal */
 .modal-content h2 {
-  margin: 4px 40px 10px 0;
-  font-size: 34px;
+  margin: 4px 40px 10px 46px;
+  font-size: 22px;
   letter-spacing: 1px;
   text-transform: lowercase;
 }
 
-/* Botão fechar */
 .close-modal {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 12px;
+  left: 12px;
   border: 2px solid var(--border);
   background: var(--panel);
-  border-radius: 8px;
+  border-radius: 10px;
   width: 34px;
   height: 34px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   display: grid;
   place-items: center;
@@ -217,105 +207,140 @@ body {
   background: #efefef;
 }
 
-/* Tabs */
 .tabs {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 6px 0 14px;
+  margin: 10px 0 14px;
+  padding-left: 46px;
 }
 
 .tabs button {
   border: 2px solid var(--border);
   background: var(--panel);
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .tabs button:hover {
   background: #efefef;
 }
 
-/* Conteúdo das tabs */
-.tab-content {
-  padding: 8px 4px 10px;
+.tabs .tab-active {
+  background: #111;
+  color: #fff;
 }
 
-/* Imagem no modal */
+.tab-content {
+  padding: 10px 12px 12px;
+}
+
 .pokemon-detail-image {
   width: 240px;
   height: 240px;
   object-fit: contain;
   display: block;
-  margin: 4px auto 14px;
+  margin: 6px auto 14px;
 }
 
-/* Seções do modal */
 .tab-content h3 {
-  margin: 14px 0 8px;
-  font-size: 20px;
+  margin: 14px 0 10px;
+  font-size: 14px;
   letter-spacing: 0.6px;
 }
 
-/* Badges de tipos e efetividade */
 .types,
 .effectiveness {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .type-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border: 2px solid var(--border);
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 10px;
   text-transform: lowercase;
-  background: #f8f8f8;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* Texto de detalhes */
+/* Cores por tipo */
+.type-normal { background: #a8a77a; }
+.type-fire { background: #ee8130; }
+.type-water { background: #6390f0; }
+.type-electric { background: #f7d02c; color: #111; text-shadow: none; }
+.type-grass { background: #7ac74c; }
+.type-ice { background: #96d9d6; color: #111; text-shadow: none; }
+.type-fighting { background: #c22e28; }
+.type-poison { background: #a33ea1; }
+.type-ground { background: #e2bf65; color: #111; text-shadow: none; }
+.type-flying { background: #a98ff3; }
+.type-psychic { background: #f95587; }
+.type-bug { background: #a6b91a; color: #111; text-shadow: none; }
+.type-rock { background: #b6a136; color: #111; text-shadow: none; }
+.type-ghost { background: #735797; }
+.type-dragon { background: #6f35fc; }
+.type-dark { background: #705746; }
+.type-steel { background: #b7b7ce; color: #111; text-shadow: none; }
+.type-fairy { background: #d685ad; }
+
 .tab-content p {
-  margin: 6px 0;
-  font-size: 15px;
+  margin: 8px 0;
+  font-size: 11px;
 }
 
-/* Stats */
+/* Stats com barra */
 .stat-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 220px 1fr 70px;
+  gap: 12px;
   align-items: center;
-  gap: 14px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 2px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 10px;
+  border-radius: 12px;
+  margin-bottom: 12px;
   background: #fafafa;
 }
 
-.stat-row span {
-  font-size: 15px;
+.stat-name {
+  font-size: 11px;
   white-space: nowrap;
 }
 
-.stat-row span:last-child {
-  font-weight: 700;
+.stat-value {
+  font-size: 11px;
+  text-align: right;
 }
 
-/* Evolução */
+.stat-bar {
+  height: 14px;
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: #111;
+}
+
+/* Evolução com sprites */
 .evolution-chain {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 18px;
   flex-wrap: wrap;
-  padding: 8px 0 4px;
+  padding: 10px 0 6px;
 }
 
 .evolution-step {
@@ -324,27 +349,12 @@ body {
   gap: 12px;
 }
 
-.evolution-step button {
-  border: 2px solid var(--border);
-  background: var(--panel);
-  border-radius: 10px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 14px;
-  text-transform: lowercase;
-}
-
-.evolution-step button:hover {
-  background: #efefef;
-}
-
 .evolution-requirement {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 11px;
+  color: #111;
 }
 
 .evolution-requirement img {
@@ -354,27 +364,54 @@ body {
   image-rendering: pixelated;
 }
 
+.evo-req-text {
+  font-size: 11px;
+}
+
 .arrow {
   font-size: 18px;
 }
 
-/* Navegação anterior próximo */
+.evo-pokemon {
+  border: 2px solid var(--border);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: lowercase;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.evo-pokemon:hover {
+  background: #efefef;
+}
+
+.evo-sprite {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
 .navigation-buttons {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   margin-top: 14px;
-  padding-top: 10px;
+  padding-top: 12px;
 }
 
 .navigation-buttons button {
   flex: 1;
   border: 2px solid var(--border);
   background: var(--panel);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 14px 12px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .navigation-buttons button:hover {
@@ -386,20 +423,24 @@ body {
   .pokemon-grid {
     grid-template-columns: repeat(4, minmax(150px, 1fr));
   }
+  .stat-row {
+    grid-template-columns: 200px 1fr 70px;
+  }
 }
 
 @media (max-width: 860px) {
   .pokemon-grid {
     grid-template-columns: repeat(3, minmax(140px, 1fr));
   }
-
-  .modal-content h2 {
-    font-size: 28px;
-  }
-
   .pokemon-detail-image {
     width: 210px;
     height: 210px;
+  }
+  .stat-row {
+    grid-template-columns: 1fr;
+  }
+  .stat-value {
+    text-align: left;
   }
 }
 
@@ -407,13 +448,18 @@ body {
   .pokemon-grid {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
-
   .controls input {
-    min-width: 160px;
+    min-width: 180px;
   }
-
   .modal-content {
     padding: 14px 12px 12px;
+  }
+  .tabs {
+    padding-left: 0;
+  }
+  .modal-content h2 {
+    margin-left: 0;
+    padding-left: 46px;
   }
 }
 
