@@ -257,6 +257,37 @@ body.modal-open {
   text-transform: lowercase;
 }
 
+/* Toggle Normal / Shiny */
+.shiny-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+}
+
+.shiny-btn {
+  border: 2px solid var(--border);
+  background: var(--panel);
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.shiny-btn:hover {
+  background: #efefef;
+}
+
+.shiny-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.shiny-active {
+  background: #111;
+  color: #fff;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -394,6 +425,11 @@ body.modal-open {
   background: #111;
 }
 
+/* cores por força (stats) */
+.stat-bar-fill.stat-low { background: #c22e28; }
+.stat-bar-fill.stat-mid { background: #f7d02c; }
+.stat-bar-fill.stat-high { background: #7ac74c; }
+
 /* Evolução com sprites */
 .evolution-chain {
   display: flex;
@@ -416,13 +452,6 @@ body.modal-open {
   gap: 10px;
   font-size: 11px;
   color: #111;
-}
-
-.evolution-requirement img {
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-  image-rendering: pixelated;
 }
 
 .evo-req-text {
@@ -457,6 +486,52 @@ body.modal-open {
   image-rendering: pixelated;
 }
 
+/* Tooltip das pedras (mouse + touch) */
+.stone-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.stone-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.stone-tooltip {
+  position: absolute;
+  bottom: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111;
+  color: #fff;
+  font-size: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  z-index: 2;
+}
+
+.stone-wrap:hover .stone-tooltip {
+  opacity: 1;
+}
+
+.stone-tooltip-open {
+  opacity: 1;
+}
+
+/* Navegação */
 .navigation-buttons {
   display: flex;
   justify-content: space-between;
