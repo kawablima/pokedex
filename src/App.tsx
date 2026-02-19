@@ -90,9 +90,9 @@ type Lang = "pt-BR" | "en";
 type Tab = "info" | "stats" | "evolution";
 
 type Effectiveness = {
-  weaknesses: string[]; // multipliers > 1
-  resistances: string[]; // multipliers < 1 and > 0
-  immunities: string[]; // multiplier === 0
+  weaknesses: string[];
+  resistances: string[];
+  immunities: string[];
 };
 
 const LS_KEYS = {
@@ -116,6 +116,12 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>("info");
   const [currentPokemonIndex, setCurrentPokemonIndex] = useState<number | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
+
+  const [showShiny, setShowShiny] = useState(false);
+
+  // Tooltip das pedras (abre no hover / tap)
+  const [openStoneTooltip, setOpenStoneTooltip] = useState<string | null>(null);
+  const stoneTooltipTimer = useRef<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -145,11 +151,16 @@ const App: React.FC = () => {
   const getListSprite = (id: number) =>
     `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
 
-  const getPokemonImage = (pokemon: Pokemon) =>
-    pokemon.sprites.other?.["official-artwork"]?.front_default ||
-    pokemon.sprites.front_default ||
-    getListSprite(pokemon.id) ||
-    "/placeholder.png";
+  const getPokemonImage = (pokemon: Pokemon) => {
+    if (showShiny && pokemon.sprites.front_shiny) return pokemon.sprites.front_shiny;
+
+    return (
+      pokemon.sprites.other?.["official-artwork"]?.front_default ||
+      pokemon.sprites.front_default ||
+      getListSprite(pokemon.id) ||
+      "/placeholder.png"
+    );
+  };
 
   const getStatName = (stat: string) => {
     const stats: Record<string, { "pt-BR": string; en: string }> = {
@@ -326,6 +337,8 @@ const App: React.FC = () => {
       setSelectedPokemon(null);
       setActiveTab("info");
       setEffectiveness(null);
+      setShowShiny(false);
+      setOpenStoneTooltip(null);
 
       try {
         const details = await loadPokemonDetails(item.id);
@@ -370,6 +383,8 @@ const App: React.FC = () => {
     setActiveTab("info");
     setCurrentPokemonIndex(null);
     setEffectiveness(null);
+    setShowShiny(false);
+    setOpenStoneTooltip(null);
   }, []);
 
   // Trava scroll do fundo quando modal abre
@@ -378,6 +393,20 @@ const App: React.FC = () => {
     else document.body.classList.remove("modal-open");
     return () => document.body.classList.remove("modal-open");
   }, [selectedPokemon, selectedLoading]);
+
+  // Fecha tooltip ao trocar de aba
+  useEffect(() => {
+    setOpenStoneTooltip(null);
+  }, [activeTab]);
+
+  // Fechar tooltip ao clicar fora
+  useEffect(() => {
+    if (!openStoneTooltip) return;
+
+    const onDown = () => setOpenStoneTooltip(null);
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [openStoneTooltip]);
 
   // Teclado no modal
   useEffect(() => {
@@ -533,6 +562,19 @@ const App: React.FC = () => {
     computeEffectiveness(selectedPokemon).catch(() => setEffectiveness(null));
   }, [selectedPokemon, computeEffectiveness]);
 
+  // Tooltip helpers
+  const openStone = useCallback((key: string) => {
+    if (stoneTooltipTimer.current) window.clearTimeout(stoneTooltipTimer.current);
+    setOpenStoneTooltip(key);
+    // auto-fecha após 2.2s (bom no mobile)
+    stoneTooltipTimer.current = window.setTimeout(() => setOpenStoneTooltip(null), 2200);
+  }, []);
+
+  const closeStone = useCallback(() => {
+    if (stoneTooltipTimer.current) window.clearTimeout(stoneTooltipTimer.current);
+    setOpenStoneTooltip(null);
+  }, []);
+
   return (
     <div className="pokedex-container">
       <h1>Pokédex</h1>
@@ -563,9 +605,9 @@ const App: React.FC = () => {
           type="button"
           className={`fav-filter ${favoritesOnly ? "fav-filter-on" : ""}`}
           onClick={() => setFavoritesOnly((v) => !v)}
-          title={language === "pt-BR" ? "Mostrar apenas favoritos" : "Show favorites only"}
+          title={language === "pt-BR" ? "Mostrar apenas minha pokédex" : "Show my pokedex only"}
         >
-          ★ {language === "pt-BR" ? "Favoritos" : "Favorites"}
+          ★ {language === "pt-BR" ? "Minha Pokédex" : "My Pokédex"}
         </button>
       </div>
 
@@ -602,7 +644,7 @@ const App: React.FC = () => {
                       className={`fav-star ${favorites.has(pokemon.id) ? "fav-star-on" : ""}`}
                       onClick={() => toggleFavorite(pokemon.id)}
                       aria-label="favorite"
-                      title={language === "pt-BR" ? "Favoritar" : "Favorite"}
+                      title={language === "pt-BR" ? "Adicionar na minha pokédex" : "Add to my pokedex"}
                     >
                       ★
                     </button>
@@ -636,6 +678,21 @@ const App: React.FC = () => {
                   #{selectedPokemon.id.toString().padStart(3, "0")} {selectedPokemon.name}
                 </h2>
 
+                <div className="shiny-toggle">
+                  <button type="button" className={`shiny-btn ${!showShiny ? "shiny-active" : ""}`} onClick={() => setShowShiny(false)}>
+                    Normal
+                  </button>
+                  <button
+                    type="button"
+                    className={`shiny-btn ${showShiny ? "shiny-active" : ""}`}
+                    onClick={() => setShowShiny(true)}
+                    disabled={!selectedPokemon.sprites.front_shiny}
+                    title={!selectedPokemon.sprites.front_shiny ? (language === "pt-BR" ? "Shiny indisponível" : "Shiny unavailable") : ""}
+                  >
+                    Shiny
+                  </button>
+                </div>
+
                 <div className="tabs">
                   <button className={activeTab === "info" ? "tab-active" : ""} onClick={() => setActiveTab("info")}>
                     {language === "pt-BR" ? "Informações" : "Information"}
@@ -643,10 +700,7 @@ const App: React.FC = () => {
                   <button className={activeTab === "stats" ? "tab-active" : ""} onClick={() => setActiveTab("stats")}>
                     {language === "pt-BR" ? "Estatísticas" : "Stats"}
                   </button>
-                  <button
-                    className={activeTab === "evolution" ? "tab-active" : ""}
-                    onClick={() => setActiveTab("evolution")}
-                  >
+                  <button className={activeTab === "evolution" ? "tab-active" : ""} onClick={() => setActiveTab("evolution")}>
                     {language === "pt-BR" ? "Evolução" : "Evolution"}
                   </button>
                 </div>
@@ -670,16 +724,15 @@ const App: React.FC = () => {
                       <h3>{language === "pt-BR" ? "Fraquezas" : "Weaknesses"}</h3>
                       <div className="effectiveness">
                         {effectiveness ? (
-                          <>
-                            {effectiveness.weaknesses.map((t) => (
+                          effectiveness.weaknesses.length ? (
+                            effectiveness.weaknesses.map((t) => (
                               <span key={`wk-${t}`} className={`type-badge type-${t}`}>
                                 {t}
                               </span>
-                            ))}
-                            {effectiveness.weaknesses.length === 0 && (
-                              <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
-                            )}
-                          </>
+                            ))
+                          ) : (
+                            <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
+                          )
                         ) : (
                           <span className="muted">{language === "pt-BR" ? "Carregando" : "Loading"}</span>
                         )}
@@ -690,16 +743,15 @@ const App: React.FC = () => {
                       <h3>{language === "pt-BR" ? "Resistências" : "Resistances"}</h3>
                       <div className="effectiveness">
                         {effectiveness ? (
-                          <>
-                            {effectiveness.resistances.map((t) => (
+                          effectiveness.resistances.length ? (
+                            effectiveness.resistances.map((t) => (
                               <span key={`rs-${t}`} className={`type-badge type-${t}`}>
                                 {t}
                               </span>
-                            ))}
-                            {effectiveness.resistances.length === 0 && (
-                              <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
-                            )}
-                          </>
+                            ))
+                          ) : (
+                            <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
+                          )
                         ) : (
                           <span className="muted">{language === "pt-BR" ? "Carregando" : "Loading"}</span>
                         )}
@@ -710,16 +762,15 @@ const App: React.FC = () => {
                       <h3>{language === "pt-BR" ? "Imunidades" : "Immunities"}</h3>
                       <div className="effectiveness">
                         {effectiveness ? (
-                          <>
-                            {effectiveness.immunities.map((t) => (
+                          effectiveness.immunities.length ? (
+                            effectiveness.immunities.map((t) => (
                               <span key={`im-${t}`} className={`type-badge type-${t}`}>
                                 {t}
                               </span>
-                            ))}
-                            {effectiveness.immunities.length === 0 && (
-                              <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
-                            )}
-                          </>
+                            ))
+                          ) : (
+                            <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
+                          )
                         ) : (
                           <span className="muted">{language === "pt-BR" ? "Carregando" : "Loading"}</span>
                         )}
@@ -744,11 +795,13 @@ const App: React.FC = () => {
                       {selectedPokemon.stats.map((stat) => {
                         const value = stat.base_stat;
                         const pct = Math.min(100, Math.round((value / 200) * 100));
+                        const tone = value >= 120 ? "stat-high" : value >= 70 ? "stat-mid" : "stat-low";
+
                         return (
                           <div key={stat.stat.name} className="stat-row">
                             <span className="stat-name">{getStatName(stat.stat.name)}</span>
                             <div className="stat-bar">
-                              <div className="stat-bar-fill" style={{ width: `${pct}%` }} />
+                              <div className={`stat-bar-fill ${tone}`} style={{ width: `${pct}%` }} />
                             </div>
                             <span className="stat-value">{value}</span>
                           </div>
@@ -766,12 +819,30 @@ const App: React.FC = () => {
                           const pokemon = pokemonList.find((p) => p.id === step.id);
                           if (!pokemon) return null;
 
+                          const tooltipKey = `${selectedPokemon.id}-${step.id}-${index}`;
+
                           return (
                             <div key={step.id} className="evolution-step">
                               {index > 0 && (
                                 <div className="evolution-requirement">
                                   {step.stoneImage ? (
-                                    <img src={step.stoneImage} alt={step.requirement} title={step.requirement} />
+                                    <span
+                                      className="stone-wrap"
+                                      onPointerEnter={() => openStone(tooltipKey)}
+                                      onPointerLeave={() => closeStone()}
+                                      onPointerDown={(e) => {
+                                        e.stopPropagation();
+                                        setOpenStoneTooltip((curr) => (curr === tooltipKey ? null : tooltipKey));
+                                        openStone(tooltipKey);
+                                      }}
+                                      role="button"
+                                      aria-label={step.requirement}
+                                    >
+                                      <img className="stone-img" src={step.stoneImage} alt={step.requirement} />
+                                      <span className={`stone-tooltip ${openStoneTooltip === tooltipKey ? "stone-tooltip-open" : ""}`}>
+                                        {step.requirement}
+                                      </span>
+                                    </span>
                                   ) : (
                                     <span className="evo-req-text">{step.requirement || "?"}</span>
                                   )}
