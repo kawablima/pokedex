@@ -6,8 +6,8 @@
   --text: #111;
   --muted: #666;
   --border: #111;
-  --shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
-  --radius: 12px;
+  --shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+  --radius: 14px;
   --gap: 18px;
 }
 
@@ -30,14 +30,18 @@ select {
   font-family: inherit;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .pokedex-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 22px 18px 40px;
+  padding: 22px 18px 44px;
 }
 
 .pokedex-container h1 {
-  margin: 8px 0 12px;
+  margin: 10px 0 14px;
   text-align: center;
   font-size: 40px;
   letter-spacing: 1px;
@@ -58,17 +62,35 @@ select {
   background: var(--panel);
   padding: 10px 12px;
   font-size: 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   outline: none;
 }
 
 .controls input {
-  min-width: 240px;
+  min-width: 260px;
 }
 
 .controls select:focus,
 .controls input:focus {
   box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.14);
+}
+
+.fav-filter {
+  border: 2px solid var(--border);
+  background: var(--panel);
+  padding: 10px 12px;
+  font-size: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.fav-filter:hover {
+  background: #efefef;
+}
+
+.fav-filter-on {
+  background: #111;
+  color: #fff;
 }
 
 .loading {
@@ -81,11 +103,11 @@ select {
 .error {
   max-width: 900px;
   margin: 0 auto 18px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 2px solid var(--border);
   background: #ffecec;
   color: #7a0000;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 12px;
 }
 
@@ -96,7 +118,7 @@ select {
 }
 
 .pokemon-group h2 {
-  margin: 8px 0 14px;
+  margin: 10px 0 14px;
   font-size: 22px;
   letter-spacing: 1px;
 }
@@ -107,7 +129,12 @@ select {
   gap: var(--gap);
 }
 
+.pokemon-card-wrap {
+  position: relative;
+}
+
 .pokemon-card {
+  width: 100%;
   appearance: none;
   -webkit-appearance: none;
   border: 2px solid var(--border);
@@ -122,7 +149,7 @@ select {
 
 .pokemon-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
 }
 
 .pokemon-card:focus {
@@ -157,6 +184,27 @@ select {
   text-transform: lowercase;
 }
 
+.fav-star {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #bbb;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+}
+
+.fav-star:hover {
+  color: #999;
+}
+
+.fav-star-on {
+  color: #f7d02c;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -170,41 +218,43 @@ select {
 
 .modal-content {
   position: relative;
-  width: min(920px, 100%);
+  width: min(960px, 100%);
   max-height: min(86vh, 900px);
   overflow: auto;
   background: var(--panel);
   border: 2px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 18px 18px 14px;
 }
 
-.modal-content h2 {
-  margin: 4px 40px 10px 46px;
+.modal-content:focus {
+  outline: none;
+}
+
+.close-x {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: #d00000;
+  padding: 0;
+}
+
+.close-x:hover {
+  color: #ff1f1f;
+}
+
+.modal-title {
+  margin: 4px 0 10px 0;
+  padding-left: 18px;
   font-size: 22px;
   letter-spacing: 1px;
   text-transform: lowercase;
-}
-
-.close-modal {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  border: 2px solid var(--border);
-  background: var(--panel);
-  border-radius: 10px;
-  width: 34px;
-  height: 34px;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-}
-
-.close-modal:hover {
-  background: #efefef;
 }
 
 .tabs {
@@ -212,14 +262,14 @@ select {
   gap: 8px;
   flex-wrap: wrap;
   margin: 10px 0 14px;
-  padding-left: 46px;
+  padding-left: 18px;
 }
 
 .tabs button {
   border: 2px solid var(--border);
   background: var(--panel);
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 11px;
 }
@@ -245,8 +295,12 @@ select {
   margin: 6px auto 14px;
 }
 
+.section {
+  margin-top: 14px;
+}
+
 .tab-content h3 {
-  margin: 14px 0 10px;
+  margin: 12px 0 10px;
   font-size: 14px;
   letter-spacing: 0.6px;
 }
@@ -256,7 +310,7 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .type-badge {
@@ -264,12 +318,17 @@ select {
   align-items: center;
   justify-content: center;
   padding: 6px 12px;
-  border: 2px solid var(--border);
   border-radius: 999px;
   font-size: 10px;
   text-transform: lowercase;
   color: #fff;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(0, 0, 0, 0.55);
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 /* Cores por tipo */
@@ -297,17 +356,19 @@ select {
   font-size: 11px;
 }
 
-/* Stats com barra */
+/* Stats sem bordas grandes */
+.stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .stat-row {
   display: grid;
   grid-template-columns: 220px 1fr 70px;
   gap: 12px;
   align-items: center;
-  padding: 10px 12px;
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 12px;
-  background: #fafafa;
+  padding: 6px 4px;
 }
 
 .stat-name {
@@ -418,6 +479,13 @@ select {
   background: #efefef;
 }
 
+.modal-hint {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+}
+
 /* Responsivo */
 @media (max-width: 1100px) {
   .pokemon-grid {
@@ -442,6 +510,9 @@ select {
   .stat-value {
     text-align: left;
   }
+  .modal-title {
+    padding-left: 28px;
+  }
 }
 
 @media (max-width: 600px) {
@@ -453,13 +524,6 @@ select {
   }
   .modal-content {
     padding: 14px 12px 12px;
-  }
-  .tabs {
-    padding-left: 0;
-  }
-  .modal-content h2 {
-    margin-left: 0;
-    padding-left: 46px;
   }
 }
 
