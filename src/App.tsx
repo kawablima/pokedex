@@ -329,7 +329,7 @@ const App: React.FC = () => {
 
   // Funções auxiliares
   const getPokemonImageFromId = (id: number) =>
-    `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
 
   const getPokemonImage = (pokemon: Pokemon) => {
     return (
