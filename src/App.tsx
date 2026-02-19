@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./PokeDex.css";
 
-// Interfaces (detalhe completo vindo de /pokemon/{id})
 interface Pokemon {
   id: number;
   name: string;
@@ -9,6 +8,7 @@ interface Pokemon {
   weight: number;
   sprites: {
     front_default: string;
+    front_shiny?: string;
     other?: { "official-artwork"?: { front_default?: string } };
   };
   types: Array<{ type: { name: string } }>;
@@ -19,6 +19,15 @@ interface Pokemon {
 interface PokemonListItem {
   id: number;
   name: string;
+}
+
+interface TypeApi {
+  name: string;
+  damage_relations: {
+    double_damage_from: Array<{ name: string }>;
+    half_damage_from: Array<{ name: string }>;
+    no_damage_from: Array<{ name: string }>;
+  };
 }
 
 interface EvolutionChain {
@@ -40,7 +49,27 @@ interface EvolutionStep {
   stoneImage?: string;
 }
 
-// Constantes
+const ALL_TYPES = [
+  "normal",
+  "fire",
+  "water",
+  "electric",
+  "grass",
+  "ice",
+  "fighting",
+  "poison",
+  "ground",
+  "flying",
+  "psychic",
+  "bug",
+  "rock",
+  "ghost",
+  "dragon",
+  "dark",
+  "steel",
+  "fairy",
+] as const;
+
 const POKEMON_LIMIT = 1025;
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 900;
@@ -57,110 +86,142 @@ const GENERATIONS = [
   { id: 9, name: "Paldea", range: [906, 1025] },
 ];
 
+type Lang = "pt-BR" | "en";
+type Tab = "info" | "stats" | "evolution";
+
+type Effectiveness = {
+  weaknesses: string[]; // multipliers > 1
+  resistances: string[]; // multipliers < 1 and > 0
+  immunities: string[]; // multiplier === 0
+};
+
+const LS_KEYS = {
+  lang: "pokedex_lang",
+  gen: "pokedex_gen",
+  fav: "pokedex_favorites",
+  favOnly: "pokedex_fav_only",
+};
+
 const App: React.FC = () => {
-  // Estados
   const [pokemonList, setPokemonList] = useState<PokemonListItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedPokemon, setSelectedPokemon] = useState<Pokemon | null>(null);
+  const [rawSearch, setRawSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterGeneration, setFilterGeneration] = useState("all");
-  const [activeTab, setActiveTab] = useState<"info" | "stats" | "evolution">("info");
+  const [language, setLanguage] = useState<Lang>("pt-BR");
+
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+
+  const [selectedPokemon, setSelectedPokemon] = useState<Pokemon | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("info");
   const [currentPokemonIndex, setCurrentPokemonIndex] = useState<number | null>(null);
-  const [language, setLanguage] = useState<"pt-BR" | "en">("pt-BR");
+  const [selectedLoading, setSelectedLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedLoading, setSelectedLoading] = useState(false);
-
-  // Cache
   const [pokemonDetailsCache, setPokemonDetailsCache] = useState<Record<number, Pokemon>>({});
   const [evolutionChains, setEvolutionChains] = useState<Record<number, EvolutionStep[]>>({});
+  const [typeCache, setTypeCache] = useState<Record<string, TypeApi>>({});
+  const [effectiveness, setEffectiveness] = useState<Effectiveness | null>(null);
 
-  // Fetch com retry
-  const fetchWithRetry = useCallback(
-    async <T,>(url: string, retries = RETRY_ATTEMPTS): Promise<T> => {
-      for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-          const response = await fetch(url);
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-          return (await response.json()) as T;
-        } catch (err) {
-          if (attempt === retries) throw err;
-          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-        }
+  const modalRef = useRef<HTMLDivElement | null>(null);
+
+  const fetchWithRetry = useCallback(async <T,>(url: string, retries = RETRY_ATTEMPTS): Promise<T> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+        return (await response.json()) as T;
+      } catch (err) {
+        if (attempt === retries) throw err;
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       }
-      throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
-    },
-    []
-  );
-
-  // Nomes de itens
-  const mapItemToName = useCallback((itemName: string, lang: "pt-BR" | "en") => {
-    const items: Record<string, { "pt-BR": string; en: string }> = {
-      "fire-stone": { "pt-BR": "Pedra de Fogo", en: "Fire Stone" },
-      "water-stone": { "pt-BR": "Pedra de Água", en: "Water Stone" },
-      "thunder-stone": { "pt-BR": "Pedra de Trovão", en: "Thunder Stone" },
-      "leaf-stone": { "pt-BR": "Pedra de Folha", en: "Leaf Stone" },
-      "moon-stone": { "pt-BR": "Pedra da Lua", en: "Moon Stone" },
-      "sun-stone": { "pt-BR": "Pedra do Sol", en: "Sun Stone" },
-      "shiny-stone": { "pt-BR": "Pedra Brilhante", en: "Shiny Stone" },
-      "dusk-stone": { "pt-BR": "Pedra do Crepúsculo", en: "Dusk Stone" },
-      "dawn-stone": { "pt-BR": "Pedra da Alvorada", en: "Dawn Stone" },
-    };
-    return items[itemName]?.[lang] || itemName.replace(/-/g, " ");
+    }
+    throw new Error(`Failed to fetch ${url}`);
   }, []);
 
-  // Extrai cadeia evolutiva
-  const extractEvolutionChainSteps = useCallback(
-    (evolutionData: EvolutionChain, list: PokemonListItem[]): EvolutionStep[] => {
-      const steps: EvolutionStep[] = [];
+  const getListSprite = (id: number) =>
+    `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
 
-      const traverse = (chain: EvolutionChain["chain"]) => {
-        const speciesUrl = chain.species.url;
-        const id = parseInt(speciesUrl.split("/").slice(-2, -1)[0], 10);
-        const name = list.find((p) => p.id === id)?.name || chain.species.name;
+  const getPokemonImage = (pokemon: Pokemon) =>
+    pokemon.sprites.other?.["official-artwork"]?.front_default ||
+    pokemon.sprites.front_default ||
+    getListSprite(pokemon.id) ||
+    "/placeholder.png";
 
-        let requirement: string | undefined;
-        let stoneImage: string | undefined;
+  const getStatName = (stat: string) => {
+    const stats: Record<string, { "pt-BR": string; en: string }> = {
+      hp: { "pt-BR": "PS", en: "HP" },
+      attack: { "pt-BR": "Ataque", en: "Attack" },
+      defense: { "pt-BR": "Defesa", en: "Defense" },
+      "special-attack": { "pt-BR": "Ataque Especial", en: "Sp. Attack" },
+      "special-defense": { "pt-BR": "Defesa Especial", en: "Sp. Defense" },
+      speed: { "pt-BR": "Velocidade", en: "Speed" },
+    };
+    return stats[stat]?.[language] || stat.replace(/-/g, " ");
+  };
 
-        if (chain.evolution_details.length > 0) {
-          const details = chain.evolution_details[0];
+  // Persistência
+  useEffect(() => {
+    try {
+      const savedLang = localStorage.getItem(LS_KEYS.lang) as Lang | null;
+      const savedGen = localStorage.getItem(LS_KEYS.gen);
+      const savedFavOnly = localStorage.getItem(LS_KEYS.favOnly);
+      const savedFav = localStorage.getItem(LS_KEYS.fav);
 
-          if (details.min_level) {
-            requirement = `${language === "pt-BR" ? "Nv." : "Lv."} ${details.min_level}`;
-          } else if (details.item) {
-            const itemName = details.item.name;
-            const stoneImages: Record<string, string> = {
-              "fire-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/fire-stone.png",
-              "water-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/water-stone.png",
-              "thunder-stone":
-                "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/thunder-stone.png",
-              "leaf-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/leaf-stone.png",
-              "moon-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/moon-stone.png",
-              "sun-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/sun-stone.png",
-              "shiny-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/shiny-stone.png",
-              "dusk-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dusk-stone.png",
-              "dawn-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dawn-stone.png",
-            };
-            stoneImage = stoneImages[itemName];
-            requirement = mapItemToName(itemName, language);
-          } else if (details.trigger.name === "trade") {
-            requirement = language === "pt-BR" ? "Troca" : "Trade";
-          } else if (details.trigger.name) {
-            requirement = details.trigger.name.replace(/-/g, " ");
-          }
-        }
+      if (savedLang === "pt-BR" || savedLang === "en") setLanguage(savedLang);
+      if (savedGen) setFilterGeneration(savedGen);
+      if (savedFavOnly) setFavoritesOnly(savedFavOnly === "1");
 
-        steps.push({ id, name, requirement, stoneImage });
-        chain.evolves_to.forEach(traverse);
-      };
+      if (savedFav) {
+        const arr = JSON.parse(savedFav) as number[];
+        setFavorites(new Set(arr.filter((n) => typeof n === "number")));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
-      traverse(evolutionData.chain);
-      return steps;
-    },
-    [language, mapItemToName]
-  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.lang, language);
+    } catch {}
+  }, [language]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.gen, filterGeneration);
+    } catch {}
+  }, [filterGeneration]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.favOnly, favoritesOnly ? "1" : "0");
+    } catch {}
+  }, [favoritesOnly]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.fav, JSON.stringify(Array.from(favorites)));
+    } catch {}
+  }, [favorites]);
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(rawSearch.trim()), 180);
+    return () => clearTimeout(t);
+  }, [rawSearch]);
+
+  const toggleFavorite = useCallback((id: number) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Lista leve
   const fetchPokemonList = useCallback(async () => {
@@ -182,13 +243,57 @@ const App: React.FC = () => {
       setProgress(100);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`Falha ao carregar a lista: ${msg}`);
+      setError(`${language === "pt-BR" ? "Falha ao carregar a lista" : "Failed to load list"}: ${msg}`);
     } finally {
       setLoading(false);
     }
-  }, [fetchWithRetry]);
+  }, [fetchWithRetry, language]);
 
-  // Detalhe sob demanda com cache
+  useEffect(() => {
+    fetchPokemonList();
+  }, [fetchPokemonList]);
+
+  // Busca por número
+  const parsedSearch = useMemo(() => {
+    const s = debouncedSearch.toLowerCase();
+    const onlyDigits = s.replace("#", "").trim();
+    const isNum = onlyDigits.length > 0 && /^[0-9]+$/.test(onlyDigits);
+    const num = isNum ? parseInt(onlyDigits, 10) : null;
+    return { s, isNum, num };
+  }, [debouncedSearch]);
+
+  const filteredPokemon = useMemo(() => {
+    return pokemonList.filter((p) => {
+      const matchesGen =
+        filterGeneration === "all" ||
+        GENERATIONS.some(
+          (gen) =>
+            gen.id.toString() === filterGeneration.replace("gen", "") &&
+            p.id >= gen.range[0] &&
+            p.id <= gen.range[1]
+        );
+
+      const matchesFav = !favoritesOnly || favorites.has(p.id);
+
+      const matchesSearch = (() => {
+        if (!parsedSearch.s) return true;
+        if (parsedSearch.isNum && parsedSearch.num !== null) return p.id === parsedSearch.num;
+        return p.name.toLowerCase().includes(parsedSearch.s);
+      })();
+
+      return matchesGen && matchesFav && matchesSearch;
+    });
+  }, [pokemonList, filterGeneration, favoritesOnly, favorites, parsedSearch]);
+
+  const groupedPokemon = useMemo(() => {
+    const groups = GENERATIONS.map((gen) => ({ ...gen, pokemon: [] as PokemonListItem[] }));
+    filteredPokemon.forEach((p) => {
+      const g = groups.find((x) => p.id >= x.range[0] && p.id <= x.range[1]);
+      if (g) g.pokemon.push(p);
+    });
+    return groups.filter((g) => g.pokemon.length > 0);
+  }, [filteredPokemon]);
+
   const loadPokemonDetails = useCallback(
     async (id: number) => {
       if (pokemonDetailsCache[id]) return pokemonDetailsCache[id];
@@ -199,63 +304,17 @@ const App: React.FC = () => {
     [fetchWithRetry, pokemonDetailsCache]
   );
 
-  // Evolução sob demanda
-  const loadEvolutionForPokemon = useCallback(
-    async (id: number) => {
-      if (evolutionChains[id]) return;
-
-      const speciesData = await fetchWithRetry<{ evolution_chain: { url: string } }>(
-        `https://pokeapi.co/api/v2/pokemon-species/${id}`
-      );
-      const evolutionData = await fetchWithRetry<EvolutionChain>(speciesData.evolution_chain.url);
-      const chainSteps = extractEvolutionChainSteps(evolutionData, pokemonList);
-
-      setEvolutionChains((prev) => {
-        const next = { ...prev };
-        chainSteps.forEach((step) => {
-          next[step.id] = chainSteps;
-        });
-        return next;
-      });
+  const preloadNeighbors = useCallback(
+    async (index: number) => {
+      const prevIndex = index > 0 ? index - 1 : pokemonList.length - 1;
+      const nextIndex = index < pokemonList.length - 1 ? index + 1 : 0;
+      const prev = pokemonList[prevIndex];
+      const next = pokemonList[nextIndex];
+      if (prev) loadPokemonDetails(prev.id).catch(() => {});
+      if (next) loadPokemonDetails(next.id).catch(() => {});
     },
-    [evolutionChains, extractEvolutionChainSteps, fetchWithRetry, pokemonList]
+    [loadPokemonDetails, pokemonList]
   );
-
-  useEffect(() => {
-    fetchPokemonList();
-  }, [fetchPokemonList]);
-
-  // Filtragem
-  const filteredPokemon = useMemo(() => {
-    return pokemonList.filter((pokemon) => {
-      const matchesSearch = pokemon.name.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesGeneration =
-        filterGeneration === "all" ||
-        GENERATIONS.some(
-          (gen) =>
-            gen.id.toString() === filterGeneration.replace("gen", "") &&
-            pokemon.id >= gen.range[0] &&
-            pokemon.id <= gen.range[1]
-        );
-
-      return matchesSearch && matchesGeneration;
-    });
-  }, [pokemonList, searchTerm, filterGeneration]);
-
-  // Agrupa por geração
-  const groupedPokemon = useMemo(() => {
-    const groups = GENERATIONS.map((gen) => ({ ...gen, pokemon: [] as PokemonListItem[] }));
-    filteredPokemon.forEach((pokemon) => {
-      const group = groups.find((g) => pokemon.id >= g.range[0] && pokemon.id <= g.range[1]);
-      if (group) group.pokemon.push(pokemon);
-    });
-    return groups.filter((group) => group.pokemon.length > 0);
-  }, [filteredPokemon]);
-
-  // Handlers
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value);
-  const handleGenerationFilter = (e: React.ChangeEvent<HTMLSelectElement>) => setFilterGeneration(e.target.value);
 
   const openPokemonByIndex = useCallback(
     async (index: number) => {
@@ -266,15 +325,17 @@ const App: React.FC = () => {
       setSelectedLoading(true);
       setSelectedPokemon(null);
       setActiveTab("info");
+      setEffectiveness(null);
 
       try {
         const details = await loadPokemonDetails(item.id);
         setSelectedPokemon(details);
+        preloadNeighbors(index);
       } finally {
         setSelectedLoading(false);
       }
     },
-    [loadPokemonDetails, pokemonList]
+    [loadPokemonDetails, pokemonList, preloadNeighbors]
   );
 
   const handlePokemonSelect = useCallback(
@@ -304,11 +365,121 @@ const App: React.FC = () => {
     [currentPokemonIndex, openPokemonByIndex, pokemonList.length]
   );
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setSelectedPokemon(null);
     setActiveTab("info");
     setCurrentPokemonIndex(null);
-  };
+    setEffectiveness(null);
+  }, []);
+
+  // Trava scroll do fundo quando modal abre
+  useEffect(() => {
+    if (selectedPokemon || selectedLoading) document.body.classList.add("modal-open");
+    else document.body.classList.remove("modal-open");
+    return () => document.body.classList.remove("modal-open");
+  }, [selectedPokemon, selectedLoading]);
+
+  // Teclado no modal
+  useEffect(() => {
+    if (!selectedPokemon && !selectedLoading) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeModal();
+      if (e.key === "ArrowLeft") handlePokemonNavigation("prev");
+      if (e.key === "ArrowRight") handlePokemonNavigation("next");
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedPokemon, selectedLoading, closeModal, handlePokemonNavigation]);
+
+  // Foca modal quando abre
+  useEffect(() => {
+    if ((selectedPokemon || selectedLoading) && modalRef.current) {
+      modalRef.current.focus();
+    }
+  }, [selectedPokemon, selectedLoading]);
+
+  // Evolução sob demanda
+  const mapItemToName = useCallback((itemName: string, lang: Lang) => {
+    const items: Record<string, { "pt-BR": string; en: string }> = {
+      "fire-stone": { "pt-BR": "Pedra de Fogo", en: "Fire Stone" },
+      "water-stone": { "pt-BR": "Pedra de Água", en: "Water Stone" },
+      "thunder-stone": { "pt-BR": "Pedra de Trovão", en: "Thunder Stone" },
+      "leaf-stone": { "pt-BR": "Pedra de Folha", en: "Leaf Stone" },
+      "moon-stone": { "pt-BR": "Pedra da Lua", en: "Moon Stone" },
+      "sun-stone": { "pt-BR": "Pedra do Sol", en: "Sun Stone" },
+      "shiny-stone": { "pt-BR": "Pedra Brilhante", en: "Shiny Stone" },
+      "dusk-stone": { "pt-BR": "Pedra do Crepúsculo", en: "Dusk Stone" },
+      "dawn-stone": { "pt-BR": "Pedra da Alvorada", en: "Dawn Stone" },
+    };
+    return items[itemName]?.[lang] || itemName.replace(/-/g, " ");
+  }, []);
+
+  const extractEvolutionChainSteps = useCallback(
+    (evolutionData: EvolutionChain, list: PokemonListItem[]): EvolutionStep[] => {
+      const steps: EvolutionStep[] = [];
+
+      const traverse = (chain: EvolutionChain["chain"]) => {
+        const id = parseInt(chain.species.url.split("/").slice(-2, -1)[0], 10);
+        const name = list.find((p) => p.id === id)?.name || chain.species.name;
+
+        let requirement: string | undefined;
+        let stoneImage: string | undefined;
+
+        if (chain.evolution_details.length > 0) {
+          const d = chain.evolution_details[0];
+          if (d.min_level) {
+            requirement = `${language === "pt-BR" ? "Nv." : "Lv."} ${d.min_level}`;
+          } else if (d.item) {
+            const itemName = d.item.name;
+            const imgs: Record<string, string> = {
+              "fire-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/fire-stone.png",
+              "water-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/water-stone.png",
+              "thunder-stone":
+                "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/thunder-stone.png",
+              "leaf-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/leaf-stone.png",
+              "moon-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/moon-stone.png",
+              "sun-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/sun-stone.png",
+              "shiny-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/shiny-stone.png",
+              "dusk-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dusk-stone.png",
+              "dawn-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dawn-stone.png",
+            };
+            stoneImage = imgs[itemName];
+            requirement = mapItemToName(itemName, language);
+          } else if (d.trigger.name === "trade") {
+            requirement = language === "pt-BR" ? "Troca" : "Trade";
+          }
+        }
+
+        steps.push({ id, name, requirement, stoneImage });
+        chain.evolves_to.forEach(traverse);
+      };
+
+      traverse(evolutionData.chain);
+      return steps;
+    },
+    [language, mapItemToName]
+  );
+
+  const loadEvolutionForPokemon = useCallback(
+    async (id: number) => {
+      if (evolutionChains[id]) return;
+
+      const species = await fetchWithRetry<{ evolution_chain: { url: string } }>(
+        `https://pokeapi.co/api/v2/pokemon-species/${id}`
+      );
+      const evoData = await fetchWithRetry<EvolutionChain>(species.evolution_chain.url);
+      const steps = extractEvolutionChainSteps(evoData, pokemonList);
+
+      setEvolutionChains((prev) => {
+        const next = { ...prev };
+        steps.forEach((s) => (next[s.id] = steps));
+        return next;
+      });
+    },
+    [evolutionChains, extractEvolutionChainSteps, fetchWithRetry, pokemonList]
+  );
 
   useEffect(() => {
     if (activeTab === "evolution" && selectedPokemon) {
@@ -316,77 +487,63 @@ const App: React.FC = () => {
     }
   }, [activeTab, selectedPokemon, loadEvolutionForPokemon]);
 
-  // Imagens
-  const getListSprite = (id: number) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+  // Efetividade real via PokeAPI type
+  const loadType = useCallback(
+    async (typeName: string) => {
+      if (typeCache[typeName]) return typeCache[typeName];
+      const t = await fetchWithRetry<TypeApi>(`https://pokeapi.co/api/v2/type/${typeName}`);
+      setTypeCache((prev) => ({ ...prev, [typeName]: t }));
+      return t;
+    },
+    [fetchWithRetry, typeCache]
+  );
 
-  const getPokemonImage = (pokemon: Pokemon) => {
-    return (
-      pokemon.sprites.other?.["official-artwork"]?.front_default ||
-      pokemon.sprites.front_default ||
-      getListSprite(pokemon.id) ||
-      "/placeholder.png"
-    );
-  };
+  const computeEffectiveness = useCallback(
+    async (pokemon: Pokemon) => {
+      const pokemonTypes = pokemon.types.map((t) => t.type.name.toLowerCase());
+      const mult: Record<string, number> = {};
+      ALL_TYPES.forEach((t) => (mult[t] = 1));
 
-  const getStatName = (stat: string) => {
-    const stats: Record<string, { "pt-BR": string; en: string }> = {
-      hp: { "pt-BR": "PS", en: "HP" },
-      attack: { "pt-BR": "Ataque", en: "Attack" },
-      defense: { "pt-BR": "Defesa", en: "Defense" },
-      "special-attack": { "pt-BR": "Ataque Especial", en: "Sp. Attack" },
-      "special-defense": { "pt-BR": "Defesa Especial", en: "Sp. Defense" },
-      speed: { "pt-BR": "Velocidade", en: "Speed" },
-    };
-    return stats[stat]?.[language] || stat.replace(/-/g, " ");
-  };
+      const typeDatas = await Promise.all(pokemonTypes.map((t) => loadType(t)));
 
-  const getTypeEffectiveness = (types: Pokemon["types"]) => {
-    const typeEffectiveness: { [key: string]: { strongAgainst: string[]; weakAgainst: string[] } } = {
-      normal: { strongAgainst: [], weakAgainst: ["rock", "steel"] },
-      fire: { strongAgainst: ["grass", "ice", "bug", "steel"], weakAgainst: ["water", "rock", "fire"] },
-      water: { strongAgainst: ["fire", "ground", "rock"], weakAgainst: ["grass", "electric"] },
-      grass: { strongAgainst: ["water", "ground", "rock"], weakAgainst: ["fire", "flying", "poison", "bug"] },
-      electric: { strongAgainst: ["water", "flying"], weakAgainst: ["grass", "electric", "dragon"] },
-      ice: { strongAgainst: ["grass", "ground", "flying", "dragon"], weakAgainst: ["fire", "water", "ice", "steel"] },
-      fighting: { strongAgainst: ["normal", "rock", "steel", "ice", "dark"], weakAgainst: ["flying", "psychic", "fairy"] },
-      poison: { strongAgainst: ["grass", "fairy"], weakAgainst: ["ground", "psychic"] },
-      ground: { strongAgainst: ["fire", "electric", "rock", "steel"], weakAgainst: ["grass", "water"] },
-      flying: { strongAgainst: ["grass", "fighting", "bug"], weakAgainst: ["rock", "electric", "ice"] },
-      psychic: { strongAgainst: ["fighting", "poison"], weakAgainst: ["bug", "ghost", "dark"] },
-      bug: { strongAgainst: ["grass", "psychic", "dark"], weakAgainst: ["fire", "flying", "rock"] },
-      rock: { strongAgainst: ["fire", "ice", "flying", "bug"], weakAgainst: ["water", "grass"] },
-      ghost: { strongAgainst: ["psychic", "ghost"], weakAgainst: ["dark"] },
-      dragon: { strongAgainst: ["dragon"], weakAgainst: ["ice", "fairy"] },
-      dark: { strongAgainst: ["psychic", "ghost"], weakAgainst: ["fighting", "fairy"] },
-      steel: { strongAgainst: ["ice", "rock", "fairy"], weakAgainst: ["fire", "water", "electric"] },
-      fairy: { strongAgainst: ["fighting", "dragon", "dark"], weakAgainst: ["steel", "poison"] },
-    };
-
-    let strongAgainst: string[] = [];
-    let weakAgainst: string[] = [];
-
-    types.forEach((type) => {
-      const typeName = type.type.name.toLowerCase();
-      if (typeEffectiveness[typeName]) {
-        strongAgainst = Array.from(new Set([...strongAgainst, ...typeEffectiveness[typeName].strongAgainst]));
-        weakAgainst = Array.from(new Set([...weakAgainst, ...typeEffectiveness[typeName].weakAgainst]));
+      for (const td of typeDatas) {
+        td.damage_relations.double_damage_from.forEach((x) => (mult[x.name] *= 2));
+        td.damage_relations.half_damage_from.forEach((x) => (mult[x.name] *= 0.5));
+        td.damage_relations.no_damage_from.forEach((x) => (mult[x.name] = 0));
       }
-    });
 
-    return { strongAgainst, weakAgainst };
-  };
+      const weaknesses: string[] = [];
+      const resistances: string[] = [];
+      const immunities: string[] = [];
+
+      ALL_TYPES.forEach((t) => {
+        const v = mult[t];
+        if (v === 0) immunities.push(t);
+        else if (v > 1) weaknesses.push(t);
+        else if (v < 1) resistances.push(t);
+      });
+
+      setEffectiveness({ weaknesses, resistances, immunities });
+    },
+    [loadType]
+  );
+
+  useEffect(() => {
+    if (!selectedPokemon) return;
+    computeEffectiveness(selectedPokemon).catch(() => setEffectiveness(null));
+  }, [selectedPokemon, computeEffectiveness]);
 
   return (
     <div className="pokedex-container">
       <h1>Pokédex</h1>
 
       <div className="controls">
-        <select value={language} onChange={(e) => setLanguage(e.target.value as "pt-BR" | "en")}>
+        <select value={language} onChange={(e) => setLanguage(e.target.value as Lang)}>
           <option value="pt-BR">Português</option>
           <option value="en">English</option>
         </select>
 
-        <select value={filterGeneration} onChange={handleGenerationFilter}>
+        <select value={filterGeneration} onChange={(e) => setFilterGeneration(e.target.value)}>
           <option value="all">{language === "pt-BR" ? "Todas Gerações" : "All Generations"}</option>
           {GENERATIONS.map((gen) => (
             <option key={gen.id} value={`gen${gen.id}`}>
@@ -397,37 +554,59 @@ const App: React.FC = () => {
 
         <input
           type="text"
-          value={searchTerm}
-          onChange={handleSearch}
-          placeholder={language === "pt-BR" ? "Buscar Pokémon..." : "Search Pokémon..."}
+          value={rawSearch}
+          onChange={(e) => setRawSearch(e.target.value)}
+          placeholder={language === "pt-BR" ? "Buscar por nome ou número" : "Search by name or number"}
         />
+
+        <button
+          type="button"
+          className={`fav-filter ${favoritesOnly ? "fav-filter-on" : ""}`}
+          onClick={() => setFavoritesOnly((v) => !v)}
+          title={language === "pt-BR" ? "Mostrar apenas favoritos" : "Show favorites only"}
+        >
+          ★ {language === "pt-BR" ? "Favoritos" : "Favorites"}
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
 
       {loading ? (
-        <div className="loading">{language === "pt-BR" ? `Carregando... ${progress}%` : `Loading... ${progress}%`}</div>
+        <div className="loading">{language === "pt-BR" ? `Carregando ${progress}%` : `Loading ${progress}%`}</div>
       ) : (
         <div className="pokemon-groups">
           {groupedPokemon.map((group) => (
             <div key={group.id} className="pokemon-group">
-              <h2>{`${language === "pt-BR" ? "Geração" : "Generation"} ${group.id} - ${group.name}`}</h2>
+              <h2>{`${language === "pt-BR" ? "Geração" : "Generation"} ${group.id}  ${group.name}`}</h2>
 
               <div className="pokemon-grid">
                 {group.pokemon.map((pokemon) => (
-                  <button key={pokemon.id} className="pokemon-card" onClick={() => handlePokemonSelect(pokemon)} type="button">
-                    <img
-                      src={getListSprite(pokemon.id)}
-                      alt={pokemon.name}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/placeholder.png";
-                      }}
-                    />
-                    <div className="pokemon-card-info">
-                      <p className="pokemon-id">#{pokemon.id.toString().padStart(3, "0")}</p>
-                      <h3>{pokemon.name}</h3>
-                    </div>
-                  </button>
+                  <div key={pokemon.id} className="pokemon-card-wrap">
+                    <button className="pokemon-card" onClick={() => handlePokemonSelect(pokemon)} type="button">
+                      <img
+                        src={getListSprite(pokemon.id)}
+                        alt={pokemon.name}
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/placeholder.png";
+                        }}
+                      />
+                      <div className="pokemon-card-info">
+                        <p className="pokemon-id">#{pokemon.id.toString().padStart(3, "0")}</p>
+                        <h3>{pokemon.name}</h3>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`fav-star ${favorites.has(pokemon.id) ? "fav-star-on" : ""}`}
+                      onClick={() => toggleFavorite(pokemon.id)}
+                      aria-label="favorite"
+                      title={language === "pt-BR" ? "Favoritar" : "Favorite"}
+                    >
+                      ★
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -437,16 +616,23 @@ const App: React.FC = () => {
 
       {(selectedPokemon || selectedLoading) && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="close-modal" onClick={closeModal}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            ref={modalRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <button className="close-x" onClick={closeModal} aria-label="close">
               ×
             </button>
 
             {selectedLoading || !selectedPokemon ? (
-              <div className="loading">{language === "pt-BR" ? "Carregando detalhes..." : "Loading details..."}</div>
+              <div className="loading">{language === "pt-BR" ? "Carregando detalhes" : "Loading details"}</div>
             ) : (
               <>
-                <h2>
+                <h2 className="modal-title">
                   #{selectedPokemon.id.toString().padStart(3, "0")} {selectedPokemon.name}
                 </h2>
 
@@ -457,7 +643,10 @@ const App: React.FC = () => {
                   <button className={activeTab === "stats" ? "tab-active" : ""} onClick={() => setActiveTab("stats")}>
                     {language === "pt-BR" ? "Estatísticas" : "Stats"}
                   </button>
-                  <button className={activeTab === "evolution" ? "tab-active" : ""} onClick={() => setActiveTab("evolution")}>
+                  <button
+                    className={activeTab === "evolution" ? "tab-active" : ""}
+                    onClick={() => setActiveTab("evolution")}
+                  >
                     {language === "pt-BR" ? "Evolução" : "Evolution"}
                   </button>
                 </div>
@@ -466,58 +655,106 @@ const App: React.FC = () => {
                   <div className="tab-content">
                     <img className="pokemon-detail-image" src={getPokemonImage(selectedPokemon)} alt={selectedPokemon.name} />
 
-                    <h3>{language === "pt-BR" ? "Tipo" : "Type"}</h3>
-                    <div className="types">
-                      {selectedPokemon.types.map((type) => (
-                        <span key={type.type.name} className={`type-badge type-${type.type.name}`}>
-                          {type.type.name}
-                        </span>
-                      ))}
+                    <div className="section">
+                      <h3>{language === "pt-BR" ? "Tipo" : "Type"}</h3>
+                      <div className="types">
+                        {selectedPokemon.types.map((t) => (
+                          <span key={t.type.name} className={`type-badge type-${t.type.name}`}>
+                            {t.type.name}
+                          </span>
+                        ))}
+                      </div>
                     </div>
 
-                    <h3>{language === "pt-BR" ? "Vantagens" : "Strengths"}</h3>
-                    <div className="effectiveness">
-                      {getTypeEffectiveness(selectedPokemon.types).strongAgainst.map((type, index) => (
-                        <span key={`${type}-${index}`} className={`type-badge type-${type}`}>
-                          {type}
-                        </span>
-                      ))}
+                    <div className="section">
+                      <h3>{language === "pt-BR" ? "Fraquezas" : "Weaknesses"}</h3>
+                      <div className="effectiveness">
+                        {effectiveness ? (
+                          <>
+                            {effectiveness.weaknesses.map((t) => (
+                              <span key={`wk-${t}`} className={`type-badge type-${t}`}>
+                                {t}
+                              </span>
+                            ))}
+                            {effectiveness.weaknesses.length === 0 && (
+                              <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="muted">{language === "pt-BR" ? "Carregando" : "Loading"}</span>
+                        )}
+                      </div>
                     </div>
 
-                    <h3>{language === "pt-BR" ? "Fraquezas" : "Weaknesses"}</h3>
-                    <div className="effectiveness">
-                      {getTypeEffectiveness(selectedPokemon.types).weakAgainst.map((type, index) => (
-                        <span key={`${type}-${index}`} className={`type-badge type-${type}`}>
-                          {type}
-                        </span>
-                      ))}
+                    <div className="section">
+                      <h3>{language === "pt-BR" ? "Resistências" : "Resistances"}</h3>
+                      <div className="effectiveness">
+                        {effectiveness ? (
+                          <>
+                            {effectiveness.resistances.map((t) => (
+                              <span key={`rs-${t}`} className={`type-badge type-${t}`}>
+                                {t}
+                              </span>
+                            ))}
+                            {effectiveness.resistances.length === 0 && (
+                              <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="muted">{language === "pt-BR" ? "Carregando" : "Loading"}</span>
+                        )}
+                      </div>
                     </div>
 
-                    <h3>{language === "pt-BR" ? "Detalhes" : "Details"}</h3>
-                    <p>
-                      {language === "pt-BR" ? "Altura" : "Height"}: {(selectedPokemon.height / 10).toFixed(1)} m
-                    </p>
-                    <p>
-                      {language === "pt-BR" ? "Peso" : "Weight"}: {(selectedPokemon.weight / 10).toFixed(1)} kg
-                    </p>
+                    <div className="section">
+                      <h3>{language === "pt-BR" ? "Imunidades" : "Immunities"}</h3>
+                      <div className="effectiveness">
+                        {effectiveness ? (
+                          <>
+                            {effectiveness.immunities.map((t) => (
+                              <span key={`im-${t}`} className={`type-badge type-${t}`}>
+                                {t}
+                              </span>
+                            ))}
+                            {effectiveness.immunities.length === 0 && (
+                              <span className="muted">{language === "pt-BR" ? "Nenhuma" : "None"}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="muted">{language === "pt-BR" ? "Carregando" : "Loading"}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="section">
+                      <h3>{language === "pt-BR" ? "Detalhes" : "Details"}</h3>
+                      <p>
+                        {language === "pt-BR" ? "Altura" : "Height"}: {(selectedPokemon.height / 10).toFixed(1)} m
+                      </p>
+                      <p>
+                        {language === "pt-BR" ? "Peso" : "Weight"}: {(selectedPokemon.weight / 10).toFixed(1)} kg
+                      </p>
+                    </div>
                   </div>
                 )}
 
                 {activeTab === "stats" && (
                   <div className="tab-content">
-                    {selectedPokemon.stats.map((stat) => {
-                      const value = stat.base_stat;
-                      const pct = Math.min(100, Math.round((value / 200) * 100));
-                      return (
-                        <div key={stat.stat.name} className="stat-row">
-                          <span className="stat-name">{getStatName(stat.stat.name)}</span>
-                          <div className="stat-bar">
-                            <div className="stat-bar-fill" style={{ width: `${pct}%` }} />
+                    <div className="stats-list">
+                      {selectedPokemon.stats.map((stat) => {
+                        const value = stat.base_stat;
+                        const pct = Math.min(100, Math.round((value / 200) * 100));
+                        return (
+                          <div key={stat.stat.name} className="stat-row">
+                            <span className="stat-name">{getStatName(stat.stat.name)}</span>
+                            <div className="stat-bar">
+                              <div className="stat-bar-fill" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="stat-value">{value}</span>
                           </div>
-                          <span className="stat-value">{value}</span>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -547,6 +784,7 @@ const App: React.FC = () => {
                                   className="evo-sprite"
                                   src={getListSprite(pokemon.id)}
                                   alt={pokemon.name}
+                                  loading="lazy"
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).src = "/placeholder.png";
                                   }}
@@ -560,7 +798,7 @@ const App: React.FC = () => {
                         })}
                       </div>
                     ) : (
-                      <div className="loading">{language === "pt-BR" ? "Carregando evolução..." : "Loading evolution..."}</div>
+                      <div className="loading">{language === "pt-BR" ? "Carregando evolução" : "Loading evolution"}</div>
                     )}
                   </div>
                 )}
@@ -569,6 +807,12 @@ const App: React.FC = () => {
                   <button onClick={() => handlePokemonNavigation("prev")}>{language === "pt-BR" ? "Anterior" : "Previous"}</button>
                   <button onClick={() => handlePokemonNavigation("next")}>{language === "pt-BR" ? "Próximo" : "Next"}</button>
                 </div>
+
+                <p className="modal-hint">
+                  {language === "pt-BR"
+                    ? "Dica: use Esc para fechar e as setas para navegar"
+                    : "Tip: use Esc to close and arrows to navigate"}
+                </p>
               </>
             )}
           </div>
