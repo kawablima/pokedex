@@ -43,7 +43,7 @@ interface EvolutionStep {
 // Constantes
 const POKEMON_LIMIT = 1025;
 const RETRY_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 1000;
+const RETRY_DELAY_MS = 900;
 
 const GENERATIONS = [
   { id: 1, name: "Kanto", range: [1, 151] },
@@ -63,7 +63,7 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPokemon, setSelectedPokemon] = useState<Pokemon | null>(null);
   const [filterGeneration, setFilterGeneration] = useState("all");
-  const [activeTab, setActiveTab] = useState("info");
+  const [activeTab, setActiveTab] = useState<"info" | "stats" | "evolution">("info");
   const [currentPokemonIndex, setCurrentPokemonIndex] = useState<number | null>(null);
   const [language, setLanguage] = useState<"pt-BR" | "en">("pt-BR");
 
@@ -73,11 +73,11 @@ const App: React.FC = () => {
 
   const [selectedLoading, setSelectedLoading] = useState(false);
 
-  // Cache de detalhes e evolução
+  // Cache
   const [pokemonDetailsCache, setPokemonDetailsCache] = useState<Record<number, Pokemon>>({});
   const [evolutionChains, setEvolutionChains] = useState<Record<number, EvolutionStep[]>>({});
 
-  // Função para buscar dados com retry
+  // Fetch com retry
   const fetchWithRetry = useCallback(
     async <T,>(url: string, retries = RETRY_ATTEMPTS): Promise<T> => {
       for (let attempt = 1; attempt <= retries; attempt++) {
@@ -87,7 +87,6 @@ const App: React.FC = () => {
           return (await response.json()) as T;
         } catch (err) {
           if (attempt === retries) throw err;
-          console.warn(`Attempt ${attempt} failed for ${url}. Retrying...`);
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
         }
       }
@@ -96,7 +95,7 @@ const App: React.FC = () => {
     []
   );
 
-  // Mapeia itens para nomes legíveis
+  // Nomes de itens
   const mapItemToName = useCallback((itemName: string, lang: "pt-BR" | "en") => {
     const items: Record<string, { "pt-BR": string; en: string }> = {
       "fire-stone": { "pt-BR": "Pedra de Fogo", en: "Fire Stone" },
@@ -109,15 +108,15 @@ const App: React.FC = () => {
       "dusk-stone": { "pt-BR": "Pedra do Crepúsculo", en: "Dusk Stone" },
       "dawn-stone": { "pt-BR": "Pedra da Alvorada", en: "Dawn Stone" },
     };
-    return items[itemName]?.[lang] || itemName.replace("-", " ");
+    return items[itemName]?.[lang] || itemName.replace(/-/g, " ");
   }, []);
 
-  // Extrai passos da cadeia evolutiva
+  // Extrai cadeia evolutiva
   const extractEvolutionChainSteps = useCallback(
     (evolutionData: EvolutionChain, list: PokemonListItem[]): EvolutionStep[] => {
       const steps: EvolutionStep[] = [];
 
-      const traverseChain = (chain: EvolutionChain["chain"]) => {
+      const traverse = (chain: EvolutionChain["chain"]) => {
         const speciesUrl = chain.species.url;
         const id = parseInt(speciesUrl.split("/").slice(-2, -1)[0], 10);
         const name = list.find((p) => p.id === id)?.name || chain.species.name;
@@ -129,13 +128,14 @@ const App: React.FC = () => {
           const details = chain.evolution_details[0];
 
           if (details.min_level) {
-            requirement = `Lv. ${details.min_level}`;
+            requirement = `${language === "pt-BR" ? "Nv." : "Lv."} ${details.min_level}`;
           } else if (details.item) {
             const itemName = details.item.name;
             const stoneImages: Record<string, string> = {
               "fire-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/fire-stone.png",
               "water-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/water-stone.png",
-              "thunder-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/thunder-stone.png",
+              "thunder-stone":
+                "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/thunder-stone.png",
               "leaf-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/leaf-stone.png",
               "moon-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/moon-stone.png",
               "sun-stone": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/sun-stone.png",
@@ -146,21 +146,23 @@ const App: React.FC = () => {
             stoneImage = stoneImages[itemName];
             requirement = mapItemToName(itemName, language);
           } else if (details.trigger.name === "trade") {
-            requirement = language === "pt-BR" ? "Trocar" : "Trade";
+            requirement = language === "pt-BR" ? "Troca" : "Trade";
+          } else if (details.trigger.name) {
+            requirement = details.trigger.name.replace(/-/g, " ");
           }
         }
 
         steps.push({ id, name, requirement, stoneImage });
-        chain.evolves_to.forEach(traverseChain);
+        chain.evolves_to.forEach(traverse);
       };
 
-      traverseChain(evolutionData.chain);
+      traverse(evolutionData.chain);
       return steps;
     },
     [language, mapItemToName]
   );
 
-  // Busca lista leve (1 request)
+  // Lista leve
   const fetchPokemonList = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -168,9 +170,7 @@ const App: React.FC = () => {
 
     try {
       const listUrl = `https://pokeapi.co/api/v2/pokemon?limit=${POKEMON_LIMIT}`;
-      const listData = await fetchWithRetry<{
-        results: Array<{ name: string; url: string }>;
-      }>(listUrl);
+      const listData = await fetchWithRetry<{ results: Array<{ name: string; url: string }> }>(listUrl);
 
       const list: PokemonListItem[] = listData.results.map((r) => {
         const id = parseInt(r.url.split("/").slice(-2, -1)[0], 10);
@@ -182,18 +182,16 @@ const App: React.FC = () => {
       setProgress(100);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`Failed to load Pokémon list: ${msg}. Please try again later.`);
-      console.error("Error loading Pokémon list:", err);
+      setError(`Falha ao carregar a lista: ${msg}`);
     } finally {
       setLoading(false);
     }
   }, [fetchWithRetry]);
 
-  // Busca detalhe sob demanda com cache
+  // Detalhe sob demanda com cache
   const loadPokemonDetails = useCallback(
     async (id: number) => {
       if (pokemonDetailsCache[id]) return pokemonDetailsCache[id];
-
       const data = await fetchWithRetry<Pokemon>(`https://pokeapi.co/api/v2/pokemon/${id}`);
       setPokemonDetailsCache((prev) => ({ ...prev, [id]: data }));
       return data;
@@ -201,43 +199,37 @@ const App: React.FC = () => {
     [fetchWithRetry, pokemonDetailsCache]
   );
 
-  // Carrega evolução sob demanda (somente quando aba "evolution" abrir)
+  // Evolução sob demanda
   const loadEvolutionForPokemon = useCallback(
     async (id: number) => {
       if (evolutionChains[id]) return;
 
-      try {
-        const speciesData = await fetchWithRetry<{
-          evolution_chain: { url: string };
-        }>(`https://pokeapi.co/api/v2/pokemon-species/${id}`);
+      const speciesData = await fetchWithRetry<{ evolution_chain: { url: string } }>(
+        `https://pokeapi.co/api/v2/pokemon-species/${id}`
+      );
+      const evolutionData = await fetchWithRetry<EvolutionChain>(speciesData.evolution_chain.url);
+      const chainSteps = extractEvolutionChainSteps(evolutionData, pokemonList);
 
-        const evolutionData = await fetchWithRetry<EvolutionChain>(speciesData.evolution_chain.url);
-        const chainSteps = extractEvolutionChainSteps(evolutionData, pokemonList);
-
-        // mapeia a mesma chain para todos os ids dela (mantém seu modelo atual de leitura)
-        setEvolutionChains((prev) => {
-          const next = { ...prev };
-          chainSteps.forEach((step) => {
-            next[step.id] = chainSteps;
-          });
-          return next;
+      setEvolutionChains((prev) => {
+        const next = { ...prev };
+        chainSteps.forEach((step) => {
+          next[step.id] = chainSteps;
         });
-      } catch (err) {
-        console.warn(`Failed to load evolution chain for Pokémon ${id}:`, err);
-      }
+        return next;
+      });
     },
     [evolutionChains, extractEvolutionChainSteps, fetchWithRetry, pokemonList]
   );
 
-  // Efeito inicial
   useEffect(() => {
     fetchPokemonList();
   }, [fetchPokemonList]);
 
-  // Filtra Pokémon por termo de busca e geração
+  // Filtragem
   const filteredPokemon = useMemo(() => {
     return pokemonList.filter((pokemon) => {
       const matchesSearch = pokemon.name.toLowerCase().includes(searchTerm.toLowerCase());
+
       const matchesGeneration =
         filterGeneration === "all" ||
         GENERATIONS.some(
@@ -251,7 +243,7 @@ const App: React.FC = () => {
     });
   }, [pokemonList, searchTerm, filterGeneration]);
 
-  // Agrupa Pokémon por geração
+  // Agrupa por geração
   const groupedPokemon = useMemo(() => {
     const groups = GENERATIONS.map((gen) => ({ ...gen, pokemon: [] as PokemonListItem[] }));
     filteredPokemon.forEach((pokemon) => {
@@ -263,8 +255,7 @@ const App: React.FC = () => {
 
   // Handlers
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value);
-  const handleGenerationFilter = (e: React.ChangeEvent<HTMLSelectElement>) =>
-    setFilterGeneration(e.target.value);
+  const handleGenerationFilter = (e: React.ChangeEvent<HTMLSelectElement>) => setFilterGeneration(e.target.value);
 
   const openPokemonByIndex = useCallback(
     async (index: number) => {
@@ -274,12 +265,11 @@ const App: React.FC = () => {
       setCurrentPokemonIndex(index);
       setSelectedLoading(true);
       setSelectedPokemon(null);
+      setActiveTab("info");
 
       try {
         const details = await loadPokemonDetails(item.id);
         setSelectedPokemon(details);
-      } catch (err) {
-        console.error("Error loading Pokémon details:", err);
       } finally {
         setSelectedLoading(false);
       }
@@ -320,22 +310,20 @@ const App: React.FC = () => {
     setCurrentPokemonIndex(null);
   };
 
-  // Ao abrir a aba de evolução, carrega só a chain do selecionado
   useEffect(() => {
     if (activeTab === "evolution" && selectedPokemon) {
-      loadEvolutionForPokemon(selectedPokemon.id);
+      loadEvolutionForPokemon(selectedPokemon.id).catch(() => {});
     }
   }, [activeTab, selectedPokemon, loadEvolutionForPokemon]);
 
-  // Funções auxiliares
-  const getPokemonImageFromId = (id: number) =>
-  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+  // Imagens
+  const getListSprite = (id: number) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
 
   const getPokemonImage = (pokemon: Pokemon) => {
     return (
       pokemon.sprites.other?.["official-artwork"]?.front_default ||
       pokemon.sprites.front_default ||
-      getPokemonImageFromId(pokemon.id) ||
+      getListSprite(pokemon.id) ||
       "/placeholder.png"
     );
   };
@@ -349,14 +337,11 @@ const App: React.FC = () => {
       "special-defense": { "pt-BR": "Defesa Especial", en: "Sp. Defense" },
       speed: { "pt-BR": "Velocidade", en: "Speed" },
     };
-    return stats[stat]?.[language] || stat;
+    return stats[stat]?.[language] || stat.replace(/-/g, " ");
   };
 
-  // Type effectiveness (mantido igual, só usado no modal)
   const getTypeEffectiveness = (types: Pokemon["types"]) => {
-    const typeEffectiveness: {
-      [key: string]: { strongAgainst: string[]; weakAgainst: string[] };
-    } = {
+    const typeEffectiveness: { [key: string]: { strongAgainst: string[]; weakAgainst: string[] } } = {
       normal: { strongAgainst: [], weakAgainst: ["rock", "steel"] },
       fire: { strongAgainst: ["grass", "ice", "bug", "steel"], weakAgainst: ["water", "rock", "fire"] },
       water: { strongAgainst: ["fire", "ground", "rock"], weakAgainst: ["grass", "electric"] },
@@ -391,11 +376,9 @@ const App: React.FC = () => {
     return { strongAgainst, weakAgainst };
   };
 
-  // Renderização
   return (
     <div className="pokedex-container">
-      {/* Cabeçalho e controles */}
-      <h1>{language === "pt-BR" ? "Pokédex" : "Pokédex"}</h1>
+      <h1>Pokédex</h1>
 
       <div className="controls">
         <select value={language} onChange={(e) => setLanguage(e.target.value as "pt-BR" | "en")}>
@@ -407,7 +390,7 @@ const App: React.FC = () => {
           <option value="all">{language === "pt-BR" ? "Todas Gerações" : "All Generations"}</option>
           {GENERATIONS.map((gen) => (
             <option key={gen.id} value={`gen${gen.id}`}>
-              {language === "pt-BR" ? `Gen ${gen.id} (${gen.name})` : `Gen ${gen.id} (${gen.name})`}
+              {`Gen ${gen.id} (${gen.name})`}
             </option>
           ))}
         </select>
@@ -420,7 +403,6 @@ const App: React.FC = () => {
         />
       </div>
 
-      {/* Conteúdo principal */}
       {error && <div className="error">{error}</div>}
 
       {loading ? (
@@ -429,20 +411,13 @@ const App: React.FC = () => {
         <div className="pokemon-groups">
           {groupedPokemon.map((group) => (
             <div key={group.id} className="pokemon-group">
-              <h2>
-                {`${language === "pt-BR" ? "Geração" : "Generation"} ${group.id} - ${group.name}`}
-              </h2>
+              <h2>{`${language === "pt-BR" ? "Geração" : "Generation"} ${group.id} - ${group.name}`}</h2>
 
               <div className="pokemon-grid">
                 {group.pokemon.map((pokemon) => (
-                  <button
-                    key={pokemon.id}
-                    className="pokemon-card"
-                    onClick={() => handlePokemonSelect(pokemon)}
-                    type="button"
-                  >
+                  <button key={pokemon.id} className="pokemon-card" onClick={() => handlePokemonSelect(pokemon)} type="button">
                     <img
-                      src={getPokemonImageFromId(pokemon.id)}
+                      src={getListSprite(pokemon.id)}
                       alt={pokemon.name}
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = "/placeholder.png";
@@ -460,10 +435,13 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de detalhes */}
       {(selectedPokemon || selectedLoading) && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="close-modal" onClick={closeModal}>
+              ×
+            </button>
+
             {selectedLoading || !selectedPokemon ? (
               <div className="loading">{language === "pt-BR" ? "Carregando detalhes..." : "Loading details..."}</div>
             ) : (
@@ -472,37 +450,26 @@ const App: React.FC = () => {
                   #{selectedPokemon.id.toString().padStart(3, "0")} {selectedPokemon.name}
                 </h2>
 
-                <button className="close-modal" onClick={closeModal}>
-                  ×
-                </button>
-
                 <div className="tabs">
-                  <button onClick={() => setActiveTab("info")}>
+                  <button className={activeTab === "info" ? "tab-active" : ""} onClick={() => setActiveTab("info")}>
                     {language === "pt-BR" ? "Informações" : "Information"}
                   </button>
-                  <button onClick={() => setActiveTab("stats")}>
+                  <button className={activeTab === "stats" ? "tab-active" : ""} onClick={() => setActiveTab("stats")}>
                     {language === "pt-BR" ? "Estatísticas" : "Stats"}
                   </button>
-                  <button onClick={() => setActiveTab("evolution")}>
+                  <button className={activeTab === "evolution" ? "tab-active" : ""} onClick={() => setActiveTab("evolution")}>
                     {language === "pt-BR" ? "Evolução" : "Evolution"}
                   </button>
                 </div>
 
                 {activeTab === "info" && (
                   <div className="tab-content">
-                    <img
-                      className="pokemon-detail-image"
-                      src={getPokemonImage(selectedPokemon)}
-                      alt={selectedPokemon.name}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/placeholder.png";
-                      }}
-                    />
+                    <img className="pokemon-detail-image" src={getPokemonImage(selectedPokemon)} alt={selectedPokemon.name} />
 
                     <h3>{language === "pt-BR" ? "Tipo" : "Type"}</h3>
                     <div className="types">
                       {selectedPokemon.types.map((type) => (
-                        <span key={type.type.name} className="type-badge">
+                        <span key={type.type.name} className={`type-badge type-${type.type.name}`}>
                           {type.type.name}
                         </span>
                       ))}
@@ -511,7 +478,7 @@ const App: React.FC = () => {
                     <h3>{language === "pt-BR" ? "Vantagens" : "Strengths"}</h3>
                     <div className="effectiveness">
                       {getTypeEffectiveness(selectedPokemon.types).strongAgainst.map((type, index) => (
-                        <span key={`${type}-${index}`} className="type-badge">
+                        <span key={`${type}-${index}`} className={`type-badge type-${type}`}>
                           {type}
                         </span>
                       ))}
@@ -520,7 +487,7 @@ const App: React.FC = () => {
                     <h3>{language === "pt-BR" ? "Fraquezas" : "Weaknesses"}</h3>
                     <div className="effectiveness">
                       {getTypeEffectiveness(selectedPokemon.types).weakAgainst.map((type, index) => (
-                        <span key={`${type}-${index}`} className="type-badge">
+                        <span key={`${type}-${index}`} className={`type-badge type-${type}`}>
                           {type}
                         </span>
                       ))}
@@ -538,12 +505,19 @@ const App: React.FC = () => {
 
                 {activeTab === "stats" && (
                   <div className="tab-content">
-                    {selectedPokemon.stats.map((stat) => (
-                      <div key={stat.stat.name} className="stat-row">
-                        <span>{getStatName(stat.stat.name)}</span>
-                        <span>{stat.base_stat}</span>
-                      </div>
-                    ))}
+                    {selectedPokemon.stats.map((stat) => {
+                      const value = stat.base_stat;
+                      const pct = Math.min(100, Math.round((value / 200) * 100));
+                      return (
+                        <div key={stat.stat.name} className="stat-row">
+                          <span className="stat-name">{getStatName(stat.stat.name)}</span>
+                          <div className="stat-bar">
+                            <div className="stat-bar-fill" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="stat-value">{value}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -562,34 +536,38 @@ const App: React.FC = () => {
                                   {step.stoneImage ? (
                                     <img src={step.stoneImage} alt={step.requirement} title={step.requirement} />
                                   ) : (
-                                    <span>{step.requirement || "?"}</span>
+                                    <span className="evo-req-text">{step.requirement || "?"}</span>
                                   )}
                                   <span className="arrow">→</span>
                                 </div>
                               )}
 
-                              <button type="button" onClick={() => handlePokemonSelect(pokemon)}>
-                                #{pokemon.id.toString().padStart(3, "0")} {pokemon.name}
+                              <button type="button" className="evo-pokemon" onClick={() => handlePokemonSelect(pokemon)}>
+                                <img
+                                  className="evo-sprite"
+                                  src={getListSprite(pokemon.id)}
+                                  alt={pokemon.name}
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = "/placeholder.png";
+                                  }}
+                                />
+                                <span>
+                                  #{pokemon.id.toString().padStart(3, "0")} {pokemon.name}
+                                </span>
                               </button>
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <div className="loading">
-                        {language === "pt-BR" ? "Carregando evolução..." : "Loading evolution..."}
-                      </div>
+                      <div className="loading">{language === "pt-BR" ? "Carregando evolução..." : "Loading evolution..."}</div>
                     )}
                   </div>
                 )}
 
                 <div className="navigation-buttons">
-                  <button onClick={() => handlePokemonNavigation("prev")}>
-                    {language === "pt-BR" ? "Anterior" : "Previous"}
-                  </button>
-                  <button onClick={() => handlePokemonNavigation("next")}>
-                    {language === "pt-BR" ? "Próximo" : "Next"}
-                  </button>
+                  <button onClick={() => handlePokemonNavigation("prev")}>{language === "pt-BR" ? "Anterior" : "Previous"}</button>
+                  <button onClick={() => handlePokemonNavigation("next")}>{language === "pt-BR" ? "Próximo" : "Next"}</button>
                 </div>
               </>
             )}
